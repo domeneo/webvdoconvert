@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMD Vega 11 Multi-Transcode Server</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; padding: 40px; margin: 0; }
+        .container { max-width: 800px; margin: auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h1 { color: #ff4a4a; margin-top: 0; display: flex; align-items: center; gap: 10px; }
+        label { font-weight: bold; display: block; margin: 20px 0 8px; color: #aaa; }
+        
+        .file-box-container { border: 1px solid #333; background: #2a2a2a; border-radius: 6px; padding: 10px; margin-bottom: 15px; }
+        .toolbar { display: flex; gap: 10px; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .btn-small { background: #444; color: #fff; padding: 5px 10px; border-radius: 4px; font-size: 13px; width: auto; margin-bottom: 0; cursor: pointer; border: none; }
+        .btn-small:hover { background: #555; }
+        .file-list { max-height: 250px; overflow-y: auto; padding-right: 5px; }
+        .file-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid #333; cursor: pointer; }
+        .file-item:hover { background: #333; }
+        .file-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .file-item label { display: inline; margin: 0; cursor: pointer; color: #fff; font-weight: normal; }
+
+        button { width: 100%; padding: 12px; border-radius: 6px; border: none; background: #2a2a2a; color: #fff; font-size: 16px; margin-bottom: 15px; }
+        .radio-group { display: flex; gap: 20px; margin-bottom: 20px; background: #252525; padding: 15px; border-radius: 6px; }
+        .radio-item { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        
+        .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+        #startBtn { background: #ff4a4a; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        #startBtn:hover { background: #e03e3e; }
+        #startBtn:disabled { background: #555; cursor: not-allowed; }
+        
+        #vmafBtn { background: #0088cc; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        #vmafBtn:hover { background: #0077b3; }
+        #vmafBtn:disabled { background: #555; cursor: not-allowed; }
+
+        #ssimBtn { background: #6f42c1; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        #ssimBtn:hover { background: #59339d; }
+        #ssimBtn:disabled { background: #555; cursor: not-allowed; }
+
+        #snapshotBtn { background: #28a745; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        #snapshotBtn:hover { background: #218838; }
+        #snapshotBtn:disabled { background: #555; cursor: not-allowed; }
+
+        #stopBtn { background: #ff9900; color: #000; font-weight: bold; cursor: pointer; transition: 0.2s; display: none; }
+        #stopBtn:hover { background: #cc7a00; }
+
+        #restartBtn { background: #555; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        #restartBtn:hover { background: #666; }
+        
+        pre { background: #000; padding: 15px; border-radius: 6px; color: #00ff00; overflow-x: auto; white-space: pre-wrap; font-family: monospace; min-height: 150px; border: 1px solid #333; font-size: 14px; }
+        .status { font-weight: bold; color: #ffcc00; margin-bottom: 10px; }
+
+        /* Fullscreen-capable Modal Styles for Image Comparison */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background: #181818;
+            border: 1px solid #444;
+            border-radius: 10px;
+            width: 95vw;
+            max-width: 1700px;
+            height: 92vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            overflow: hidden;
+            padding: 15px 20px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+
+   
+    <div class="container">
+        <h1>📼 Multi-Hardware Transcode Server</h1>
+        <p>Select one or multiple videos from your server/network folder to batch transcode.</p>
+
+        <!-- Folder Path Selector Section -->
+        <div style="background: #23272e; border: 1px solid #3e4451; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <div style="font-weight: bold; font-size: 14px; color: #61afef; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                <span>📁 Server Storage & Folder Paths:</span>
+                <span id="pathStatusBadge" style="font-size: 11px; background: #2c313a; color: #98c379; padding: 3px 8px; border-radius: 4px;">Ready</span>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;">
+                <div style="flex: 2; min-width: 260px;">
+                    <label style="font-size: 12px; color: #abb2bf; margin-bottom: 4px; display: block;">Source Folder (โฟลเดอร์ต้นฉบับบน Server):</label>
+                    <input type="text" id="sourceDirInput" placeholder="e.g. E:\ffmpeg\convert หรือ D:\ffmpeg\convert" style="width: 100%; box-sizing: border-box; padding: 8px 10px; background: #1e2227; border: 1px solid #4b5263; color: #fff; border-radius: 4px; font-size: 13px;">
+                </div>
+                <div style="flex: 2; min-width: 260px;">
+                    <label style="font-size: 12px; color: #abb2bf; margin-bottom: 4px; display: block;">Output Folder (โฟลเดอร์ปลายทาง):</label>
+                    <input type="text" id="outputDirInput" placeholder="e.g. E:\ffmpeg\convert\output" style="width: 100%; box-sizing: border-box; padding: 8px 10px; background: #1e2227; border: 1px solid #4b5263; color: #fff; border-radius: 4px; font-size: 13px;">
+                </div>
+                <div style="display: flex; align-items: flex-end; gap: 8px;">
+                    <button type="button" id="applyPathBtn" class="btn-small" style="background: #98c379; color: #1e2227; font-weight: bold; padding: 9px 14px; height: 35px;">
+                        📂 เปลี่ยนโฟลเดอร์ & สแกนใหม่
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Preset Paths -->
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #828997; flex-wrap: wrap;" id="quickPathsContainer">
+                <span>โฟลเดอร์แนะนำ:</span>
+                <button type="button" class="btn-small quick-path-btn" data-src="E:\ffmpeg\convert" data-out="E:\ffmpeg\convert\output" style="background: #282c34; border: 1px solid #4b5263; color: #61afef; padding: 2px 8px; font-size: 11px;">Drive E: (E:\ffmpeg\convert)</button>
+                <button type="button" class="btn-small quick-path-btn" data-src="D:\ffmpeg\convert" data-out="D:\ffmpeg\convert\output" style="background: #282c34; border: 1px solid #4b5263; color: #61afef; padding: 2px 8px; font-size: 11px;">Drive D: (D:\ffmpeg\convert)</button>
+            </div>
+        </div>
+
+        <label>1. Select Video Files to Process:</label>
+        <div class="file-box-container">
+            <div class="toolbar" style="flex-wrap: wrap; align-items: center; gap: 8px;">
+                <button type="button" class="btn-small" id="selectAllBtn">Select All</button>
+                <button type="button" class="btn-small" id="clearAllBtn">Clear</button>
+                <button type="button" class="btn-small" id="selectUnconvertedBtn" style="background: #007acc;">✨ เลือกเฉพาะไฟล์ที่ยังไม่แปลง</button>
+                <button type="button" class="btn-small" id="select50Btn">เลือก 50 ไฟล์แรก</button>
+                <button type="button" class="btn-small" id="select100Btn">เลือก 100 ไฟล์แรก</button>
+                <span id="selectedCountDisplay" style="margin-left: auto; font-size: 13px; color: #ffcc00; font-weight: bold;">เลือกแล้ว: 0 ไฟล์</span>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <input type="text" id="fileSearchInput" placeholder="🔍 ค้นหาชื่อไฟล์... (เช่น GX010, .mp4)" style="width: 100%; box-sizing: border-box; padding: 8px 12px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; font-size: 13px;">
+            </div>
+            <div class="file-list" id="fileListContainer">
+                 <div style="padding: 10px; color:#888;">Scanning LAN folder...</div>
+            </div>
+        </div>
+        
+        <label>2. Select Hardware Mode:</label>
+        <div class="radio-group" style="flex-wrap: wrap;">
+            <label class="radio-item">
+                <input type="radio" name="hardwareMode" value="qsv" checked> ⚡ Intel QSV (Pentium Gold UHD 710 - Fast & High Quality)
+            </label>
+            <label class="radio-item">
+                <input type="radio" name="hardwareMode" value="vga"> 🚀 AMD GPU (Vega 11 / Radeon - 8bit Safe Fast)
+            </label>
+            <label class="radio-item">
+                <input type="radio" name="hardwareMode" value="cpu"> 🐢 CPU Only (libx265 - 10bit Slow)
+            </label>
+        </div>
+
+        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+            <div style="flex: 1;">
+                <label for="qualityInput">3. Quality (QP / CRF) - [แนะนำ QP 23 สำหรับ Auto-Quality]:</label>
+                <input type="number" id="qualityInput" value="23" min="0" max="51" step="1" style="width: 100%; box-sizing: border-box; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 6px;">
+                <small style="color: #888; display: block; margin-top: 6px; line-height: 1.4;">
+                    ⭐ <b>23 (แนะนำ)</b>: Auto ปรับตามภาพ (คลิปทั่วไป ~8M-10M, คลิปน้ำ ~23M คมกริบ)<br>
+                    21 - 22: คมชัดระดับ Master (ไฟล์ใหญ่ขึ้น ~20%)<br>
+                    25 ขึ้นไป: เน้นประหยัดพื้นที่
+                </small>
+            </div>
+            <div style="flex: 1;">
+                <label for="bitrateInput">4. Bitrate (บังคับบิตเรตเฉลี่ย - เว้นว่างเพื่อใช้ Auto QP):</label>
+                <input type="text" id="bitrateInput" placeholder="เว้นว่างเพื่อใช้ Auto QP 23 (แนะนำ)" value="" style="width: 100%; box-sizing: border-box; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 6px;">
+                <small style="color: #888; display: block; margin-top: 6px; line-height: 1.4;">
+                    💡 <b>เว้นว่างไว้ (แนะนำ)</b>: ระบบจะคุมคุณภาพตามค่า QP อัตโนมัติ<br>
+                    หากต้องการฟิกขนาดไฟล์: ใส่ 15M หรือ 20M
+                </small>
+            </div>
+            <div style="flex: 1;" id="presetContainer">
+                <label for="presetSelect">5. Speed / Preset:</label>
+                <select id="presetSelect" style="width: 100%; box-sizing: border-box; padding: 10px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 6px;">
+                    <option value="veryfast">⚡ Speed / Very Fast (เร็วสุด)</option>
+                    <option value="medium">⚖️ Balanced / Medium (สมดุล - VMAF ~71)</option>
+                    <option value="veryslow" selected>💎 Quality / Very Slow (ภาพเนียนคมชัดสุด - VMAF ~87)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Time Trimming Range (Start / End seconds) -->
+        <div style="background: #252525; padding: 12px 15px; border-radius: 8px; border: 1px solid #3a3a3a; margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: bold; color: #ffcc00; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                ✂️ เลือกช่วงเวลาแปลงไฟล์ (Time Trimming) - [เว้นว่างไว้หากต้องการแปลงทั้งคลิป]:
+            </div>
+            <div style="display: flex; gap: 15px; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <label for="startTimeInput" style="margin: 0 0 6px; font-size: 13px;">วินาทีเริ่มต้น (Start Time):</label>
+                    <input type="text" id="startTimeInput" placeholder="เช่น 0 หรือ 00:00:10 (เว้นว่าง = ต้นคลิป)" style="width: 100%; box-sizing: border-box; padding: 10px; background: #1e1e1e; border: 1px solid #444; color: #fff; border-radius: 6px;">
+                    <small style="color: #888; display: block; margin-top: 4px;">ระบุเป็นวินาที (เช่น <code>30</code>) หรือ <code>HH:MM:SS</code></small>
+                </div>
+                <div style="flex: 1;">
+                    <label for="endTimeInput" style="margin: 0 0 6px; font-size: 13px;">วินาทีสิ้นสุด (End Time):</label>
+                    <input type="text" id="endTimeInput" placeholder="เช่น 60 หรือ 00:01:00 (เว้นว่าง = จบคลิป)" style="width: 100%; box-sizing: border-box; padding: 10px; background: #1e1e1e; border: 1px solid #444; color: #fff; border-radius: 6px;">
+                    <small style="color: #888; display: block; margin-top: 4px;">ระบุเป็นตำแหน่งเวลาสิ้นสุดที่ต้องการตัดจบ</small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Action Buttons -->
+        <div class="action-buttons" style="margin-bottom: 15px;">
+            <button id="startBtn">▶ Start Batch Transcoding</button>
+            <button id="stopBtn">⏹ Stop Current Process</button>
+            <button id="restartBtn">🔄 Restart Service</button>
+        </div>
+
+        <!-- Quality Testing Tools Group -->
+        <div style="background: #252525; padding: 12px 15px; border-radius: 8px; border: 1px solid #3a3a3a; margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: bold; color: #aaa; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                🧪 Quality & Comparison Tools (ตรวจสอบคุณภาพไฟล์ที่เลือก):
+            </div>
+            <div class="action-buttons" style="gap: 10px;">
+                <button id="vmafBtn" style="flex: 1;">🔍 VMAF (15s)</button>
+                <button id="ssimBtn" style="flex: 1.2;">📐 SSIM / PSNR (จับผิดความคม)</button>
+                <button id="snapshotBtn" style="flex: 1.2;">📸 เทียบภาพประกบข้าง (Side-by-Side)</button>
+            </div>
+        </div>
+        <!-- Synchronized Zoom Image Comparison Modal (Popup ขนาดใหญ่) -->
+        <div id="imageCompareModal" class="modal-overlay">
+            <div class="modal-content">
+                <!-- Modal Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <h2 style="margin: 0; color: #ffcc00; font-size: 20px;">🔍 กล้องส่องเปรียบเทียบ Full HD (Synchronized Dual Zoom)</h2>
+                        <span id="modalFilename" style="color: #00ffcc; font-size: 14px; background: #222; padding: 4px 10px; border-radius: 4px;"></span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <label style="margin: 0; font-size: 13px; color: #aaa;">ระดับซูม:</label>
+                        <button type="button" class="btn-small" onclick="setViewerZoom(1)">1x (ปกติ)</button>
+                        <button type="button" class="btn-small" onclick="setViewerZoom(2)">2x (200%)</button>
+                        <button type="button" class="btn-small" onclick="setViewerZoom(3)">3x (300%)</button>
+                        <button type="button" class="btn-small" onclick="setViewerZoom(4)">4x (400%)</button>
+                        <button type="button" class="btn-small" onclick="resetViewerPan()" style="background: #555;">รีเซ็ตตำแหน่ง</button>
+                        <button type="button" class="btn-small" onclick="closeCompareModal()" style="background: #ff4a4a; font-weight: bold; margin-left: 15px; font-size: 15px; padding: 5px 15px;">✕ ปิด (Close)</button>
+                    </div>
+                </div>
+
+                <!-- Frame Scrubber Bar (ช่วงเวลา 2 วินาที) -->
+                <div style="background: #222; padding: 8px 15px; border-radius: 6px; margin-bottom: 10px; border: 1px solid #333; display: flex; align-items: center; gap: 15px;">
+                    <span style="font-size: 13px; font-weight: bold; color: #00ffcc; white-space: nowrap;">🎞️ เลื่อนเฟรมใน 2 วินาที:</span>
+                    <input type="range" id="frameSlider" min="0" max="9" value="0" step="1" style="flex: 1; cursor: pointer;">
+                    <span id="frameSliderLabel" style="font-size: 13px; color: #fff; min-width: 120px; font-weight: bold; text-align: right;">เฟรม 1/10 (+0.00s)</span>
+                </div>
+
+                <!-- Side-by-Side Dual Viewports -->
+                <div style="display: flex; gap: 15px; flex: 1; min-height: 0;">
+                    <!-- Original Pane -->
+                    <div style="flex: 1; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid #333; display: flex; flex-direction: column;">
+                        <div style="background: #2a2a2a; padding: 8px 12px; font-weight: bold; color: #fff; font-size: 14px; border-bottom: 1px solid #444; display: flex; justify-content: space-between;">
+                            <span>📷 ORIGINAL (ต้นฉบับ 1080p)</span>
+                            <span style="color: #aaa; font-size: 12px; font-weight: normal;">คลิกค้างแล้วลากเพื่อเลื่อนตำแหน่ง</span>
+                        </div>
+                        <div id="origViewerPane" style="position: relative; flex: 1; width: 100%; height: 100%; overflow: hidden; cursor: grab;">
+                            <img id="origImg" src="" style="position: absolute; top: 0; left: 0; width: 100%; height: auto; transform-origin: 0 0; user-select: none;" draggable="false">
+                        </div>
+                    </div>
+                    <!-- Converted Pane -->
+                    <div style="flex: 1; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid #333; display: flex; flex-direction: column;">
+                        <div style="background: #2a2a2a; padding: 8px 12px; font-weight: bold; color: #ffcc00; font-size: 14px; border-bottom: 1px solid #444; display: flex; justify-content: space-between;">
+                            <span>📼 CONVERTED (ไฟล์ที่แปลงแล้ว 1080p)</span>
+                            <span style="color: #aaa; font-size: 12px; font-weight: normal;">ซูมคู่พร้อมกัน Real-time</span>
+                        </div>
+                        <div id="convViewerPane" style="position: relative; flex: 1; width: 100%; height: 100%; overflow: hidden; cursor: grab;">
+                            <img id="convImg" src="" style="position: absolute; top: 0; left: 0; width: 100%; height: auto; transform-origin: 0 0; user-select: none;" draggable="false">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+                <pre id="LogTrans">Logs ...</pre>
+        <div class="status" id="statusText">Status: Idle</div>
+        <pre id="logOutput">Logs will appear here...</pre>
+    </div>
+
+    <script>
+        const fileListContainer = document.getElementById('fileListContainer');
+        const startBtn = document.getElementById('startBtn');
+        const vmafBtn = document.getElementById('vmafBtn');
+        const ssimBtn = document.getElementById('ssimBtn');
+        const snapshotBtn = document.getElementById('snapshotBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const statusText = document.getElementById('statusText');
+        const logOutput = document.getElementById('logOutput');
+        const LogTrans = document.getElementById('LogTrans');
+        const imageCompareModal = document.getElementById('imageCompareModal');
+        const modalFilename = document.getElementById('modalFilename');
+        
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const selectUnconvertedBtn = document.getElementById('selectUnconvertedBtn');
+        const select50Btn = document.getElementById('select50Btn');
+        const select100Btn = document.getElementById('select100Btn');
+        const selectedCountDisplay = document.getElementById('selectedCountDisplay');
+        const fileSearchInput = document.getElementById('fileSearchInput');
+        const qualityInput = document.getElementById('qualityInput');
+        const bitrateInput = document.getElementById('bitrateInput');
+        const presetSelect = document.getElementById('presetSelect');
+        const presetContainer = document.getElementById('presetContainer');
+        const startTimeInput = document.getElementById('startTimeInput');
+        const endTimeInput = document.getElementById('endTimeInput');
+        const denoiseSwitch = document.getElementById('denoiseSwitch');
+
+        // Path Selector Elements
+        const sourceDirInput = document.getElementById('sourceDirInput');
+        const outputDirInput = document.getElementById('outputDirInput');
+        const applyPathBtn = document.getElementById('applyPathBtn');
+        const pathStatusBadge = document.getElementById('pathStatusBadge');
+
+        let lastCheckedIndex = null; // For Shift + Click range selection
+
+        function updateSelectedCount() {
+            const allBoxes = document.querySelectorAll('.file-checkbox');
+            const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+            selectedCountDisplay.innerText = `เลือกแล้ว: ${checkedBoxes.length}/${allBoxes.length} ไฟล์`;
+        }
+
+        // Enable Preset dropdown for both CPU and GPU (AMD AMF supports quality/speed/balanced mapping)
+        presetContainer.style.opacity = '1';
+        presetSelect.disabled = false;
+
+        let isCancelled = false;
+
+        // Fetch active paths and config from server
+        async function initConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const data = await res.json();
+                if (data.convertDir) sourceDirInput.value = data.convertDir;
+                if (data.outputDir) outputDirInput.value = data.outputDir;
+                pathStatusBadge.innerText = 'Online';
+                pathStatusBadge.style.color = '#98c379';
+            } catch (err) {
+                pathStatusBadge.innerText = 'Offline';
+                pathStatusBadge.style.color = '#e06c75';
+            }
+        }
+
+        // Quick path buttons listener
+        document.querySelectorAll('.quick-path-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                sourceDirInput.value = btn.getAttribute('data-src');
+                outputDirInput.value = btn.getAttribute('data-out');
+                await applyNewPaths();
+            });
+        });
+
+        // Apply path button listener
+        applyPathBtn.addEventListener('click', applyNewPaths);
+
+        async function applyNewPaths() {
+            const src = sourceDirInput.value.trim();
+            const out = outputDirInput.value.trim();
+            if (!src) {
+                alert('กรุณากรอก Source Folder');
+                return;
+            }
+
+            pathStatusBadge.innerText = 'Scanning...';
+            pathStatusBadge.style.color = '#e5c07b';
+            fileListContainer.innerHTML = '<div style="padding: 10px; color:#888;">กำลังสแกนหาไฟล์ในโฟลเดอร์ใหม่...</div>';
+
+            try {
+                const saveRes = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ convertDir: src, outputDir: out })
+                });
+                const saveData = await saveRes.json();
+                if (!saveRes.ok) {
+                    alert(saveData.error || 'ไม่พบโฟลเดอร์บนเซิร์ฟเวอร์');
+                    pathStatusBadge.innerText = 'Error';
+                    pathStatusBadge.style.color = '#e06c75';
+                    return;
+                }
+                pathStatusBadge.innerText = 'Connected';
+                pathStatusBadge.style.color = '#98c379';
+                await loadFiles();
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + err.message);
+                pathStatusBadge.innerText = 'Error';
+                pathStatusBadge.style.color = '#e06c75';
+            }
+        }
+
+        async function loadFiles() {
+            try {
+                const res = await fetch('/api/files');
+                const files = await res.json();
+                fileListContainer.innerHTML = '';
+                
+                if(files.length === 0) {
+                    fileListContainer.innerHTML = '<div style="padding: 10px; color:#ff4a4a;">-- ไม่พบไฟล์วิดีโอ (.mp4, .mov, .mkv) ในโฟลเดอร์นี้ --</div>';
+                    startBtn.disabled = true;
+                    selectAllBtn.disabled = true;
+                    clearAllBtn.disabled = true;
+                    selectUnconvertedBtn.disabled = true;
+                    select50Btn.disabled = true;
+                    select100Btn.disabled = true;
+                } else {
+                    files.forEach((fileObj, index) => {
+                        const fileName = typeof fileObj === 'string' ? fileObj : fileObj.name;
+                        const hasConverted = typeof fileObj === 'object' && fileObj.hasConverted;
+                        const badge = hasConverted ? '<span style="color:#00ffcc; font-size:12px; margin-left: 8px;">[ มีไฟล์แปลงแล้ว ]</span>' : '';
+
+                        const item = document.createElement('div');
+                        item.className = 'file-item';
+                        item.setAttribute('data-filename', fileName.toLowerCase());
+                        item.setAttribute('data-converted', hasConverted ? 'true' : 'false');
+                        item.innerHTML = `
+                            <input type="checkbox" id="file_${index}" value="${fileName}" class="file-checkbox" data-index="${index}">
+                            <label for="file_${index}">${fileName} ${badge}</label>
+                        `;
+                        fileListContainer.appendChild(item);
+                    });
+
+                    // Add Shift + Click support and count listener
+                    const checkboxes = document.querySelectorAll('.file-checkbox');
+                    checkboxes.forEach((cb, idx) => {
+                        cb.addEventListener('click', (e) => {
+                            if (e.shiftKey && lastCheckedIndex !== null) {
+                                const start = Math.min(lastCheckedIndex, idx);
+                                const end = Math.max(lastCheckedIndex, idx);
+                                const isTargetChecked = cb.checked;
+                                for (let i = start; i <= end; i++) {
+                                    const targetItem = checkboxes[i].closest('.file-item');
+                                    // Only select visible items (respect search filter)
+                                    if (targetItem && targetItem.style.display !== 'none') {
+                                        checkboxes[i].checked = isTargetChecked;
+                                    }
+                                }
+                            }
+                            lastCheckedIndex = idx;
+                            updateSelectedCount();
+                        });
+                    });
+
+                    startBtn.disabled = false;
+                    vmafBtn.disabled = false;
+                    selectAllBtn.disabled = false;
+                    clearAllBtn.disabled = false;
+                    selectUnconvertedBtn.disabled = false;
+                    select50Btn.disabled = false;
+                    select100Btn.disabled = false;
+                    updateSelectedCount();
+                }
+            } catch (err) {
+                fileListContainer.innerHTML = '<div style="padding: 10px; color:red;">Error connecting to Server</div>';
+            }
+        }
+
+        // Live Search Filter
+        fileSearchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            document.querySelectorAll('.file-item').forEach(item => {
+                const name = item.getAttribute('data-filename') || '';
+                if (name.includes(query)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+
+        selectAllBtn.addEventListener('click', () => {
+            document.querySelectorAll('.file-item').forEach(item => {
+                if (item.style.display !== 'none') {
+                    const cb = item.querySelector('.file-checkbox');
+                    if (cb) cb.checked = true;
+                }
+            });
+            updateSelectedCount();
+        });
+
+        clearAllBtn.addEventListener('click', () => {
+            document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+            updateSelectedCount();
+        });
+
+        selectUnconvertedBtn.addEventListener('click', () => {
+            document.querySelectorAll('.file-item').forEach(item => {
+                const isConverted = item.getAttribute('data-converted') === 'true';
+                const cb = item.querySelector('.file-checkbox');
+                if (cb) {
+                    if (item.style.display !== 'none' && !isConverted) {
+                        cb.checked = true;
+                    } else {
+                        cb.checked = false;
+                    }
+                }
+            });
+            updateSelectedCount();
+        });
+
+        function selectFirstN(n) {
+            let count = 0;
+            document.querySelectorAll('.file-item').forEach(item => {
+                const cb = item.querySelector('.file-checkbox');
+                if (cb) {
+                    if (item.style.display !== 'none' && count < n) {
+                        cb.checked = true;
+                        count++;
+                    } else {
+                        cb.checked = false;
+                    }
+                }
+            });
+            updateSelectedCount();
+        }
+
+        select50Btn.addEventListener('click', () => selectFirstN(50));
+        select100Btn.addEventListener('click', () => selectFirstN(100));
+
+        // Click Stop Button Event
+        stopBtn.addEventListener('click', async () => {
+            if (confirm("Are you sure you want to stop the transcoding process?")) {
+                isCancelled = true;
+                statusText.innerText = "Status: Cancelling, stopping backend FFmpeg process...";
+                try {
+                    await fetch('/api/stop', { method: 'POST' });
+                } catch (e) {
+                    console.error("Error calling stop API", e);
+                }
+            }
+        });
+
+        restartBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to restart the service?')) return;
+
+            restartBtn.disabled = true;
+            statusText.innerText = 'Status: Restarting service...';
+            logOutput.innerText += '\n[RESTART] Sending restart command to PM2...';
+
+            try {
+                const res = await fetch('/api/restart', { method: 'POST' });
+                const responseText = await res.text();
+                let result;
+
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    throw new Error(`HTTP ${res.status}: ${responseText.slice(0, 200)}`);
+                }
+
+                if (res.ok) {
+                    logOutput.innerText += `\n -> [SUCCESS] ${result.message}`;
+                } else {
+                    logOutput.innerText += `\n -> [FAILED] Error: ${result.error}`;
+                }
+            } catch (e) {
+                logOutput.innerText += `\n -> [NETWORK ERROR] ${e.message}`;
+            } finally {
+                logOutput.scrollTop = logOutput.scrollHeight;
+                restartBtn.disabled = false;
+            }
+        });
+
+        // Connect to Server-Sent Events (SSE) for background queue tracking
+        let eventSource = null;
+        function connectQueueStream() {
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource('/api/queue-stream');
+
+            eventSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'init') {
+                        if (data.logs && data.logs.length > 0) {
+                            logOutput.innerText = data.logs.join('\n');
+                            logOutput.scrollTop = logOutput.scrollHeight;
+                        }
+                        if (data.latestFfmpegStatus) {
+                            LogTrans.innerText = `\n[FFMPEG] ${data.latestFfmpegStatus}`;
+                        }
+                        updateUIQueueState(data.isQueueRunning, data.currentJobIndex, data.totalJobCount, data.currentFile);
+                    } else if (data.type === 'log') {
+                        logOutput.innerText += (logOutput.innerText ? '\n' : '') + data.log;
+                        logOutput.scrollTop = logOutput.scrollHeight;
+                    } else if (data.type === 'status_tick') {
+                        LogTrans.innerText = `\n[FFMPEG] ${data.text}`;
+                    } else if (data.type === 'queue_update') {
+                        updateUIQueueState(data.isQueueRunning, data.currentJobIndex, data.totalJobCount, data.currentFile);
+                    }
+                } catch (err) {}
+            };
+
+            eventSource.onerror = () => {
+                // Auto reconnect handled by browser EventSource
+            };
+        }
+
+        function updateUIQueueState(isRunning, currentIdx, total, currentFile) {
+            if (isRunning) {
+                startBtn.disabled = true;
+                vmafBtn.disabled = true;
+                stopBtn.style.display = 'block';
+                statusText.innerText = `Status: Processing [${currentIdx}/${total}] - ${currentFile || '...'}`;
+            } else {
+                startBtn.disabled = false;
+                vmafBtn.disabled = false;
+                stopBtn.style.display = 'none';
+                if (total > 0 && currentIdx >= total) {
+                    statusText.innerText = "Status: All background jobs finished!";
+                    loadFiles(); // reload file badges
+                } else {
+                    statusText.innerText = "Status: Idle";
+                }
+            }
+        }
+
+        connectQueueStream();
+
+        startBtn.addEventListener('click', async () => {
+            const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+            const selectedFiles = Array.from(checkedBoxes).map(cb => cb.value);
+            const mode = document.querySelector('input[name="hardwareMode"]:checked').value;
+            const quality = Number(qualityInput.value);
+            
+            if(selectedFiles.length === 0) {
+                alert('Please select at least one file!');
+                return;
+            }
+
+            if(!Number.isInteger(quality) || quality < 0 || quality > 30) {
+                alert('Quality (QP) must be an integer between 0 and 30.');
+                return;
+            }
+
+            try {
+                startBtn.disabled = true;
+                statusText.innerText = `Status: Sending ${selectedFiles.length} files to server queue...`;
+                const res = await fetch('/api/batch-start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        files: selectedFiles,
+                        hardwareMode: mode,
+                        qp: quality,
+                        bitrate: bitrateInput.value.trim(),
+                        preset: presetSelect.value,
+                        startTime: startTimeInput.value.trim(),
+                        endTime: endTimeInput.value.trim()
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(`Error starting batch: ${data.error}`);
+                    startBtn.disabled = false;
+                } else {
+                    logOutput.innerText = `[SUCCESS] ส่งคิว ${selectedFiles.length} ไฟล์ไปที่ Server เรียบร้อยแล้ว!\n💡 คุณสามารถปิดแท็บเบราว์เซอร์นี้ หรือปิดเครื่อง Client ได้ทันที ระบบจะรันต่อบน Server จนเสร็จ\n------------------------------------------------------------`;
+                    stopBtn.style.display = 'block';
+                }
+            } catch (err) {
+                alert(`Network error: ${err.message}`);
+                startBtn.disabled = false;
+            }
+        });
+
+        // Click VMAF Test Button Event
+        vmafBtn.addEventListener('click', async () => {
+            const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+            const selectedFiles = Array.from(checkedBoxes).map(cb => cb.value);
+
+            if (selectedFiles.length === 0) {
+                alert('กรุณาเลือกไฟล์ที่ต้องการตรวจสอบคุณภาพ VMAF อย่างน้อย 1 ไฟล์!');
+                return;
+            }
+
+            startBtn.disabled = true;
+            vmafBtn.disabled = true;
+            stopBtn.style.display = 'block';
+            logOutput.innerText = "[VMAF TEST] เริ่มต้นกระบวนการตรวจสอบคุณภาพภาพเปรียบเทียบ (15 วินาทีแรก)...\nเกณฑ์คะแนน VMAF (0 - 100):\n  95 - 100: ตาเปล่าแยกไม่ออกเทียบเท่าต้นฉบับ\n  90 - 95:  คุณภาพดีมาก\n  80 - 90:  คุณภาพดี/ยอมรับได้ทั่วไป\n  < 80:     เริ่มเห็นความต่างหรือภาพแตกชัดเจน\n--------------------------------------------------";
+            isCancelled = false;
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                if (isCancelled) {
+                    logOutput.innerText += `\n[CANCELLED] VMAF test stopped by user.`;
+                    break;
+                }
+
+                const currentFile = selectedFiles[i];
+                const displayCount = i + 1;
+                const fileStartTime = performance.now();
+
+                statusText.innerText = `Status: VMAF Checking [${displayCount}/${selectedFiles.length}] - ${currentFile}`;
+                logOutput.innerText += `\n\n[VMAF ${displayCount}/${selectedFiles.length}] ตรวจสอบ: ${currentFile} ...`;
+                logOutput.scrollTop = logOutput.scrollHeight;
+
+                try {
+                    const res = await fetch('/api/vmaf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            filename: currentFile,
+                            seconds: 30
+                        })
+                    });
+
+                    if (!res.body) throw new Error('Streaming response is not supported by this browser.');
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let pendingText = '';
+                    let result = null;
+
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        pendingText += decoder.decode(value || new Uint8Array(), { stream: !done });
+                        const events = pendingText.split('\n');
+                        pendingText = events.pop();
+
+                        events.filter(Boolean).forEach(eventText => {
+                            const event = JSON.parse(eventText);
+                            if (event.type === 'command') {
+                                logOutput.innerText += `\n[COMMAND] ${event.command}`;
+                            } else if (event.type === 'log') {
+                                LogTrans.innerText = `\n[VMAF] ${event.message}`;
+                            } else if (event.type === 'result') {
+                                result = event;
+                            }
+                            logOutput.scrollTop = logOutput.scrollHeight;
+                        });
+
+                        if (done) break;
+                    }
+
+                    if (!result) throw new Error('VMAF stream ended without a result.');
+
+                    if (!result.error) {
+                        logOutput.innerText += `\n -> ⭐ ${result.message}`;
+                    } else {
+                        if (isCancelled || result.error === "killed") {
+                            logOutput.innerText += `\n -> [STOPPED] VMAF test killed by user.\n`;
+                        } else {
+                            logOutput.innerText += `\n -> [FAILED] Error: ${result.error}\n`;
+                        }
+                    }
+                } catch (e) {
+                    logOutput.innerText += `\n -> [NETWORK ERROR] ${e.message}\n`;
+                }
+
+                const elapsedSeconds = (performance.now() - fileStartTime) / 1000;
+                logOutput.innerText += `\n -> [TIME] ใช้เวลาคำนวณ: ${elapsedSeconds.toFixed(2)} วินาที`;
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+
+            statusText.innerText = isCancelled ? "Status: VMAF Cancelled!" : "Status: VMAF Test Finished!";
+            startBtn.disabled = false;
+            vmafBtn.disabled = false;
+            ssimBtn.disabled = false;
+            snapshotBtn.disabled = false;
+            stopBtn.style.display = 'none';
+        });
+
+        // Click SSIM / PSNR Button Event
+        ssimBtn.addEventListener('click', async () => {
+            const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+            const selectedFiles = Array.from(checkedBoxes).map(cb => cb.value);
+
+            if (selectedFiles.length === 0) {
+                alert('กรุณาเลือกไฟล์ที่ต้องการทดสอบ SSIM / PSNR อย่างน้อย 1 ไฟล์!');
+                return;
+            }
+
+            startBtn.disabled = true;
+            vmafBtn.disabled = true;
+            ssimBtn.disabled = true;
+            snapshotBtn.disabled = true;
+            stopBtn.style.display = 'block';
+
+            logOutput.innerText = "[SSIM / PSNR TEST] วัดความเหมือนของโครงสร้างและค่าพิกเซลจริง (15 วินาทีแรก)...\nเกณฑ์คะแนน:\n  SSIM: 0.98 - 1.00 = คมกริบแทบเท่าต้นฉบับ | < 0.95 = เริ่มวุ้นหรือขอบเบลอ\n  PSNR: > 45 dB = ยอดเยี่ยม | 40 - 45 dB = ดีมาก | < 38 dB = คุณภาพเริ่มดรอป\n--------------------------------------------------";
+            isCancelled = false;
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                if (isCancelled) break;
+                const currentFile = selectedFiles[i];
+                const displayCount = i + 1;
+                const fileStartTime = performance.now();
+
+                statusText.innerText = `Status: SSIM Checking [${displayCount}/${selectedFiles.length}] - ${currentFile}`;
+                logOutput.innerText += `\n\n[SSIM ${displayCount}/${selectedFiles.length}] ตรวจสอบ: ${currentFile} ...`;
+                logOutput.scrollTop = logOutput.scrollHeight;
+
+                try {
+                    const res = await fetch('/api/ssim', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: currentFile, seconds: 15 })
+                    });
+                    if (!res.body) throw new Error('Stream not supported');
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let pendingText = '';
+                    let result = null;
+
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        pendingText += decoder.decode(value || new Uint8Array(), { stream: !done });
+                        const events = pendingText.split('\n');
+                        pendingText = events.pop();
+
+                        events.filter(Boolean).forEach(eventText => {
+                            const event = JSON.parse(eventText);
+                            if (event.type === 'log') {
+                                LogTrans.innerText = `\n[SSIM] ${event.message}`;
+                            } else if (event.type === 'result') {
+                                result = event;
+                            }
+                            logOutput.scrollTop = logOutput.scrollHeight;
+                        });
+                        if (done) break;
+                    }
+
+                    if (result && !result.error) {
+                        logOutput.innerText += `\n -> 📐 ${result.message}`;
+                    } else if (result && result.error) {
+                        logOutput.innerText += `\n -> [FAILED] Error: ${result.error}`;
+                    }
+                } catch (e) {
+                    logOutput.innerText += `\n -> [NETWORK ERROR] ${e.message}`;
+                }
+
+                const elapsedSeconds = (performance.now() - fileStartTime) / 1000;
+                logOutput.innerText += `\n -> [TIME] ใช้เวลาคำนวณ: ${elapsedSeconds.toFixed(2)} วินาที`;
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+
+            statusText.innerText = "Status: SSIM / PSNR Finished!";
+            startBtn.disabled = false;
+            vmafBtn.disabled = false;
+            ssimBtn.disabled = false;
+            snapshotBtn.disabled = false;
+            stopBtn.style.display = 'none';
+        });
+
+        const origImg = document.getElementById('origImg');
+        const convImg = document.getElementById('convImg');
+        const origViewerPane = document.getElementById('origViewerPane');
+        const convViewerPane = document.getElementById('convViewerPane');
+
+        // Synchronized Dual-Image Zoom & Pan Engine
+        let currentZoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let startMouseX = 0;
+        let startMouseY = 0;
+
+        function updatePanZoomStyles() {
+            const transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+            origImg.style.transform = transform;
+            convImg.style.transform = transform;
+        }
+
+        window.setViewerZoom = function(scale) {
+            currentZoom = scale;
+            if (scale === 1) {
+                panX = 0;
+                panY = 0;
+            }
+            updatePanZoomStyles();
+        };
+
+        window.resetViewerPan = function() {
+            panX = 0;
+            panY = 0;
+            updatePanZoomStyles();
+        };
+
+        function bindPanEvents(pane) {
+            pane.addEventListener('mousedown', (e) => {
+                if (currentZoom <= 1) return;
+                isPanning = true;
+                startMouseX = e.clientX - panX;
+                startMouseY = e.clientY - panY;
+                pane.style.cursor = 'grabbing';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                panX = e.clientX - startMouseX;
+                panY = e.clientY - startMouseY;
+                updatePanZoomStyles();
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isPanning) {
+                    isPanning = false;
+                    origViewerPane.style.cursor = 'grab';
+                    convViewerPane.style.cursor = 'grab';
+                }
+            });
+
+            // Mouse wheel zoom
+            pane.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? 0.3 : -0.3;
+                currentZoom = Math.min(Math.max(1, currentZoom + delta), 5);
+                if (currentZoom === 1) {
+                    panX = 0;
+                    panY = 0;
+                }
+                updatePanZoomStyles();
+            });
+        }
+
+        bindPanEvents(origViewerPane);
+        bindPanEvents(convViewerPane);
+
+        const frameSlider = document.getElementById('frameSlider');
+        const frameSliderLabel = document.getElementById('frameSliderLabel');
+        let burstFrames = [];
+
+        frameSlider.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.value);
+            if (burstFrames[idx]) {
+                origImg.src = burstFrames[idx].origUrl;
+                convImg.src = burstFrames[idx].convUrl;
+                frameSliderLabel.innerText = `เฟรม ${burstFrames[idx].index}/${burstFrames.length} (${burstFrames[idx].timeLabel})`;
+            }
+        });
+
+        window.closeCompareModal = function() {
+            imageCompareModal.style.display = 'none';
+        };
+
+        // Close modal on Escape key
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && imageCompareModal.style.display === 'flex') {
+                closeCompareModal();
+            }
+        });
+
+        // Click Snapshot Compare Button Event (Burst 10 Frames across 2s in Large Modal)
+        snapshotBtn.addEventListener('click', async () => {
+            const checkedBoxes = document.querySelectorAll('.file-checkbox:checked');
+            const selectedFiles = Array.from(checkedBoxes).map(cb => cb.value);
+
+            if (selectedFiles.length === 0) {
+                alert('กรุณาเลือกไฟล์ที่ต้องการดูภาพเปรียบเทียบ 1 ไฟล์!');
+                return;
+            }
+
+            const currentFile = selectedFiles[0];
+            modalFilename.innerText = `ไฟล์: ${currentFile}`;
+            statusText.innerText = `Status: กำลังสุ่มแคป 10 ภาพในช่วง 2 วินาทีของ ${currentFile} ...`;
+            logOutput.innerText += `\n[SNAPSHOT] กำลังตัด 10 เฟรมต่อเนื่องในช่วง 2 วินาที (Full-HD 1080p)...`;
+
+            try {
+                const res = await fetch('/api/snapshot-burst', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: currentFile, startTime: 5 })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+
+                burstFrames = data.frames || [];
+                if (burstFrames.length > 0) {
+                    frameSlider.max = burstFrames.length - 1;
+                    frameSlider.value = 0;
+                    origImg.src = burstFrames[0].origUrl;
+                    convImg.src = burstFrames[0].convUrl;
+                    frameSliderLabel.innerText = `เฟรม 1/${burstFrames.length} (${burstFrames[0].timeLabel})`;
+                }
+
+                imageCompareModal.style.display = 'flex'; // Open Fullscreen Modal
+                setViewerZoom(1);
+                resetViewerPan();
+
+                logOutput.innerText += `\n -> 📸 [SUCCESS] เปิดหน้าต่าง Modal เปรียบเทียบเรียบร้อย! สามารถซูมส่องดูได้เต็มจอครับ`;
+                statusText.innerText = "Status: เปิด Modal เปรียบเทียบสำเร็จ";
+            } catch (err) {
+                logOutput.innerText += `\n -> [FAILED] Error: ${err.message}`;
+                statusText.innerText = "Status: เกิดข้อผิดพลาดในการแคปภาพ";
+            }
+        });
+
+        initConfig();
+        loadFiles();
+    </script>
+</body>
+</html>

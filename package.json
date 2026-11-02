@@ -1,0 +1,13 @@
+{
+  "name": "ffmpeg-transcode-server",
+  "version": "1.0.0",
+  "description": "FFmpeg Transcode Server with Web API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
